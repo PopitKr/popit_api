@@ -104,3 +104,36 @@ func GetRandomAuthorPosts(c echo.Context) error {
 		Message: "",
 	})
 }
+
+//func GetAvatar(c echo.Context) error {
+//	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+//	if err != nil {
+//		return c.JSON(http.StatusInternalServerError, ApiResult{
+//			Success: false,
+//			Message: err.Error(),
+//		})
+//	}
+//
+//	author, err := Author{}.GetOne(id)
+//	if err != nil {
+//		return c.JSON(http.StatusInternalServerError, ApiResult{
+//			Success: false,
+//			Message: err.Error(),
+//		})
+//	}
+//
+//
+//	avatar, err :=  author.GetAvatar()
+//	if err != nil {
+//		return c.JSON(http.StatusInternalServerError, ApiResult{
+//			Success: false,
+//			Message: err.Error(),
+//		})
+//	}
+//
+//	return c.JSON(http.StatusOK, ApiResult{
+//		Success: true,
+//		Data: avatar,
+//		Message: "",
+//	})
+//}

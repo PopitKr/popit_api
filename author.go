@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"crypto/md5"
 )
 
 type Author struct {
@@ -10,6 +11,7 @@ type Author struct {
 	UserLogin string     `json:"userLogin"    xorm:"user_login"`
 	DisplayName string   `json:"displayName"  xorm:"display_name"`
 	UserUrl string       `json:"userUrl"      xorm:"user_url"`
+	Avatar string        `json:"avatar"       xorm:"-"`
 	//Important: Do not include in JSON because of personal data
 	Email string         `json:"-"            xorm:"user_email"`
 }
@@ -31,7 +33,14 @@ func (Author) GetOne(id int64) (*Author, error) {
 		return nil, errors.New("No Author Record")
 	}
 
+	(&author).initAvatar();
+
 	return &author, nil
+}
+
+func (a *Author)initAvatar() {
+	hash := md5.Sum([]byte(a.Email))
+	a.Avatar = fmt.Sprintf("https://www.gravatar.com/avatar/%x", hash)
 }
 
 func (Author) FindAuthorByPostCount(numPosts int) ([]Author, error) {
@@ -56,5 +65,8 @@ func (Author) FindAuthorByPostCount(numPosts int) ([]Author, error) {
   	return nil, err
 	}
 
+	for i := 0; i < len(authors); i++ {
+		authors[i].initAvatar()
+	}
 	return authors, nil
 }

@@ -3,6 +3,9 @@ package main
 import (
 	"time"
 	"math/rand"
+	"github.com/jaytaylor/html2text"
+	"unicode/utf8"
+	"fmt"
 )
 
 type Post struct {
@@ -12,6 +15,7 @@ type Post struct {
 	Content string       `json:"content"       xorm:"post_content"`
 	Title string		     `json:"title"         xorm:"post_title"`
 	PostDate time.Time   `json:"date"          xorm:"post_date"`
+	PostName string      `json:"postName"      xrom:"post_name"`
 	Image string         `json:"image"         xorm:"-"`
 	SocialTitle string   `json:"socialTitle"   xorm:"-"`
 	SocialDesc string    `json:"socialDesc"    xorm:"-"`
@@ -227,6 +231,17 @@ func (p *Post)loadAuthor() error {
 	return nil
 }
 
+func stringSplit(str string) string {
+	b := []byte(str)
+	idx := 0
+	for i := 0; i < 200; i++ {
+		_, size := utf8.DecodeRune(b[:idx])
+		idx += size
+	}
+
+	return str[:idx]
+}
+
 func (p *Post)loadMeta() error {
 
 	var postMetas []PostMeta
@@ -247,6 +262,21 @@ func (p *Post)loadMeta() error {
 		} else if eachMeta.Key == "_aioseop_title" {
 			p.SocialTitle = eachMeta.Value
 		}
+
+		if len(p.SocialTitle) == 0 {
+			p.SocialTitle = p.Title
+		}
+
+		socialDescText := p.SocialDesc
+		if len(socialDescText) == 0 {
+			socialDescText, _ = html2text.FromString(p.Content, html2text.Options{PrettyTables: false})
+		}
+		endIndex := 80
+		if utf8.RuneCountInString(socialDescText) < endIndex {
+			endIndex = utf8.RuneCountInString(socialDescText)
+		}
+
+		p.SocialDesc = string([]rune(socialDescText)[:endIndex])
 	}
 
 	return nil
