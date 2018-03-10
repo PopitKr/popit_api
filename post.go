@@ -284,6 +284,7 @@ func (p *Post)loadMeta() error {
 
 		p.SocialDesc = strings.Replace(p.SocialDesc, "--------------------------", "", -1)
 		p.SocialDesc = strings.Replace(p.SocialDesc, "-----------------", "", -1)
+		p.SocialDesc = strings.Replace(p.SocialDesc, "*****************", "", -1)
 	}
 
 	return nil
