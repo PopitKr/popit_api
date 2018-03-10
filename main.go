@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/middleware"
 	"net/http"
 	"log"
+	"os"
 )
 
 var (
@@ -15,9 +16,12 @@ var (
 )
 
 func init() {
-	dbConnection := fmt.Sprintf("%s:%s%s", "root", "", "@tcp(127.0.0.1:3306)/wordpress?charset=utf8&parseTime=True")
+	dbConn := os.Getenv("DB_CONN")
+	if len(dbConn) == 0 {
+		//dbConn = "root:@tcp(127.0.0.1:3306)/wordpress?charset=utf8&parseTime=True"
+	}
 
-	db, err := xorm.NewEngine("mysql", dbConnection)
+	db, err := xorm.NewEngine("mysql", dbConn)
 	if err != nil {
 		panic(fmt.Errorf("Database open error: %s \n", err))
 	}
