@@ -9,5 +9,5 @@ RUN go install -v ./...
 
 EXPOSE 8000
 
-CMD ["go/bin/popit"]
+CMD ["/go/bin/popit"]
 
