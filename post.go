@@ -5,7 +5,11 @@ import (
 	"math/rand"
 	"github.com/jaytaylor/html2text"
 	"unicode/utf8"
-	"fmt"
+	"strings"
+)
+
+const (
+	MAX_AUTHORS = 5
 )
 
 type Post struct {
@@ -88,14 +92,14 @@ func (p Post)GetRandomPostsByTerm() ([]TermPosts, error) {
 
 	numTerms := len(terms)
 
-	numResults := 3
-	if numTerms < 3 {
+	numResults := MAX_AUTHORS
+	if numTerms < MAX_AUTHORS {
 		numResults = numTerms;
 	}
 
 	termPostsArray := make([]TermPosts, 0)
 
-	selectedIndexes := []int{-1, -1, -1}
+	selectedIndexes := []int{-1, -1, -1, -1, -1}
 	for i := 0; i < numResults; i++ {
 		termIndex := -1
 		for {
@@ -159,14 +163,14 @@ func (p Post)GetRandomPostsByAuthor() ([]AuthorPosts, error) {
 
 	numAuthors := len(authors)
 
-	numResults := 3
-	if numAuthors < 3 {
+	numResults := MAX_AUTHORS
+	if numAuthors < MAX_AUTHORS {
 		numResults = numAuthors;
 	}
 
 	authorPostsArray := make([]AuthorPosts, 0)
 
-	selectedIndexes := []int{-1, -1, -1}
+	selectedIndexes := []int{-1, -1, -1, -1, -1}
 	for i := 0; i < numResults; i++ {
 		authorIndex := -1
 		for {
@@ -277,6 +281,9 @@ func (p *Post)loadMeta() error {
 		}
 
 		p.SocialDesc = string([]rune(socialDescText)[:endIndex])
+
+		p.SocialDesc = strings.Replace(p.SocialDesc, "--------------------------", "", -1)
+		p.SocialDesc = strings.Replace(p.SocialDesc, "-----------------", "", -1)
 	}
 
 	return nil
