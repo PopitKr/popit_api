@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/go-xorm/xorm"
 	"strconv"
+	"context"
 )
 
 type Term struct {
@@ -15,16 +16,16 @@ func (Term) TableName() (string) {
 	return "wprdh0703_terms"
 }
 
-func (t *Term)getQueryBase() *xorm.Session {
-	return xormDb.Table("wprdh0703_terms").Select("wprdh0703_terms.name, wprdh0703_terms.slug, wprdh0703_term_taxonomy.taxonomy").
+func (t *Term)getQueryBase(ctx context.Context) *xorm.Session {
+	return GetDBConn(ctx).Table("wprdh0703_terms").Select("wprdh0703_terms.name, wprdh0703_terms.slug, wprdh0703_term_taxonomy.taxonomy").
 		Join("INNER", "wprdh0703_term_taxonomy", "wprdh0703_terms.term_id = wprdh0703_term_taxonomy.term_id").
 		Join("INNER", "wprdh0703_term_relationships", "wprdh0703_term_taxonomy.term_taxonomy_id = wprdh0703_term_relationships.term_taxonomy_id")
 }
 
-func (t *Term)FindByPort(postId int64) ([]Term, error) {
+func (t *Term)FindByPost(ctx context.Context, postId int64) ([]Term, error) {
 	var terms []Term
 
-	err := t.getQueryBase().Where("wprdh0703_term_relationships.object_id = ?", postId).Find(&terms)
+	err := t.getQueryBase(ctx).Where("wprdh0703_term_relationships.object_id = ?", postId).Find(&terms)
 
 	if err != nil {
 		return nil, err
@@ -38,7 +39,7 @@ type TermCount struct {
 	NumPosts int  `json:"numPosts" xorm:"cnt"`
 }
 
-func (Term)CountTerm() ([]TermCount, error) {
+func (Term)CountTerm(ctx context.Context) ([]TermCount, error) {
 	query := `
 		SELECT * FROM (
 			SELECT
@@ -55,7 +56,7 @@ func (Term)CountTerm() ([]TermCount, error) {
     ORDER BY cnt DESC
 		LIMIT 20
   `
-	results, err := xormDb.QueryString(query)
+	results, err := GetDBConn(ctx).QueryString(query)
 
 	if err != nil {
 		return nil, err

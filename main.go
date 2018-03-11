@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"log"
 	"os"
+	"time"
+	"context"
 )
 
 var (
@@ -18,7 +20,7 @@ var (
 func init() {
 	dbConn := os.Getenv("DB_CONN")
 	if len(dbConn) == 0 {
-		//dbConn = "root:@tcp(127.0.0.1:3306)/wordpress?charset=utf8&parseTime=True"
+		dbConn = "root:@tcp(127.0.0.1:3306)/wordpress?charset=utf8&parseTime=True"
 	}
 
 	db, err := xorm.NewEngine("mysql", dbConn)
@@ -26,7 +28,12 @@ func init() {
 		panic(fmt.Errorf("Database open error: %s \n", err))
 	}
 	db.ShowSQL(false)
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(60 * time.Hour)
+
 	xormDb = db
+
 }
 
 type ApiResult struct {
@@ -48,7 +55,7 @@ func main() {
 	e.Pre(middleware.RemoveTrailingSlash())
 	//e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
-
+	e.Use(setDbConnContext(xormDb))
 	//e.Static("/", "public")
 
 	e.GET("/api/RecentPosts", GetRecentPosts)
@@ -58,8 +65,32 @@ func main() {
 	log.Fatal(e.Start(":8000"))
 }
 
+func setDbConnContext(xormDb *xorm.Engine) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(ctx echo.Context) error {
+			session := xormDb.NewSession()
+			defer session.Close()
+
+			req := ctx.Request()
+			ctx.SetRequest(req.WithContext(context.WithValue(req.Context(), "DB", session)))
+			return next(ctx)
+		}
+	}
+}
+
+func GetDBConn(ctx context.Context) *xorm.Session {
+	v := ctx.Value("DB")
+	if v == nil {
+		panic("DB is not exist")
+	}
+	if db, ok := v.(*xorm.Session); ok {
+		return db
+	}
+	panic("DB is not exist")
+}
+
 func GetRecentPosts(c echo.Context) error {
-	posts, err := Post{}.GetRecent()
+	posts, err := Post{}.GetRecent(c.Request().Context())
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
@@ -76,7 +107,7 @@ func GetRecentPosts(c echo.Context) error {
 }
 
 func GetChannelPosts(c echo.Context) error {
-	posts, err := Post{}.GetRandomPostsByTerm()
+	posts, err := Post{}.GetRandomPostsByTerm(c.Request().Context())
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
@@ -93,7 +124,7 @@ func GetChannelPosts(c echo.Context) error {
 }
 
 func GetRandomAuthorPosts(c echo.Context) error {
-	posts, err := Post{}.GetRandomPostsByAuthor()
+	posts, err := Post{}.GetRandomPostsByAuthor(c.Request().Context())
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{

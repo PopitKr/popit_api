@@ -6,6 +6,7 @@ import (
 	"github.com/jaytaylor/html2text"
 	"unicode/utf8"
 	"strings"
+	"context"
 )
 
 const (
@@ -48,9 +49,9 @@ func (PostMeta) TableName() (string) {
 	return "wprdh0703_postmeta"
 }
 
-func (Post)GetRecent() ([]Post, error) {
+func (Post)GetRecent(ctx context.Context) ([]Post, error) {
 	var posts []Post
-	err := xormDb.
+	err := GetDBConn(ctx).
 		Where("post_status = 'publish'").
 		And("post_type = 'post'").
 		OrderBy("post_date desc").
@@ -61,21 +62,21 @@ func (Post)GetRecent() ([]Post, error) {
 		return nil, err
 	}
 
-	return loadPostAssoications(posts)
+	return loadPostAssoications(ctx, posts)
 }
 
-func loadPostAssoications(posts []Post) ([]Post, error) {
+func loadPostAssoications(ctx context.Context, posts []Post) ([]Post, error) {
 	loadedPosts := make([]Post, 0)
 
 	for _, eachPost := range posts {
-		if err := eachPost.loadAuthor(); err != nil {
+		if err := eachPost.loadAuthor(ctx); err != nil {
 			return nil, err
 		}
 
-		if err := eachPost.loadMeta(); err != nil {
+		if err := eachPost.loadMeta(ctx); err != nil {
 			return nil, err
 		}
-		if err := eachPost.loadCategoriesAndTerms(); err != nil {
+		if err := eachPost.loadCategoriesAndTerms(ctx); err != nil {
 			return nil, err;
 		}
 
@@ -84,8 +85,8 @@ func loadPostAssoications(posts []Post) ([]Post, error) {
 	return loadedPosts, nil
 }
 
-func (p Post)GetRandomPostsByTerm() ([]TermPosts, error) {
-	terms, err := Term{}.CountTerm()
+func (p Post)GetRandomPostsByTerm(ctx context.Context) ([]TermPosts, error) {
+	terms, err := Term{}.CountTerm(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +121,7 @@ func (p Post)GetRandomPostsByTerm() ([]TermPosts, error) {
 			}
 		}
 		selectedIndexes[i] = termIndex
-		termPosts, err := p.GetTermPosts(terms[termIndex].Term)
+		termPosts, err := p.GetTermPosts(ctx, terms[termIndex].Term)
 		if err != nil {
 			return nil, err
 		}
@@ -130,10 +131,10 @@ func (p Post)GetRandomPostsByTerm() ([]TermPosts, error) {
 	return termPostsArray, nil
 }
 
-func (Post)GetTermPosts(term Term) (*TermPosts, error) {
+func (Post)GetTermPosts(ctx context.Context, term Term) (*TermPosts, error) {
 	var posts []Post
 
-	err := xormDb.Table("wprdh0703_posts").
+	err := GetDBConn(ctx).Table("wprdh0703_posts").
 		Select("wprdh0703_posts.*").
 		Join("INNER", "wprdh0703_term_relationships", "wprdh0703_posts.ID = wprdh0703_term_relationships.object_id").
 		Join("INNER", "wprdh0703_term_taxonomy", "wprdh0703_term_taxonomy.term_taxonomy_id = wprdh0703_term_relationships.term_taxonomy_id").
@@ -148,15 +149,15 @@ func (Post)GetTermPosts(term Term) (*TermPosts, error) {
 		return nil, err
 	}
 
-	loadedPosts, err := loadPostAssoications(posts)
+	loadedPosts, err := loadPostAssoications(ctx, posts)
 	return &TermPosts{
 		Term: term,
 		Posts: loadedPosts,
 	}, nil
 }
 
-func (p Post)GetRandomPostsByAuthor() ([]AuthorPosts, error) {
-	authors, err := Author{}.FindAuthorByPostCount(2)
+func (p Post)GetRandomPostsByAuthor(ctx context.Context) ([]AuthorPosts, error) {
+	authors, err := Author{}.FindAuthorByPostCount(ctx, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +192,7 @@ func (p Post)GetRandomPostsByAuthor() ([]AuthorPosts, error) {
 			}
 		}
 		selectedIndexes[i] = authorIndex
-		termPosts, err := p.GetAuthorPosts(authors[authorIndex])
+		termPosts, err := p.GetAuthorPosts(ctx, authors[authorIndex])
 		if err != nil {
 			return nil, err
 		}
@@ -201,10 +202,10 @@ func (p Post)GetRandomPostsByAuthor() ([]AuthorPosts, error) {
 	return authorPostsArray, nil
 }
 
-func (Post)GetAuthorPosts(author Author) (*AuthorPosts, error) {
+func (Post)GetAuthorPosts(ctx context.Context, author Author) (*AuthorPosts, error) {
 	var posts []Post
 
-	err := xormDb.Table("wprdh0703_posts").
+	err := GetDBConn(ctx).Table("wprdh0703_posts").
 		Select("wprdh0703_posts.*").
 		Join("INNER", "wprdh0703_users", "wprdh0703_posts.post_author = wprdh0703_users.ID").
 		Where("wprdh0703_posts.post_status = 'publish'").
@@ -218,15 +219,15 @@ func (Post)GetAuthorPosts(author Author) (*AuthorPosts, error) {
 		return nil, err
 	}
 
-	loadedPosts, err := loadPostAssoications(posts)
+	loadedPosts, err := loadPostAssoications(ctx, posts)
 	return &AuthorPosts{
 		Author: author,
 		Posts: loadedPosts,
 	}, nil
 }
 
-func (p *Post)loadAuthor() error {
-	if author, err := (Author{}).GetOne(p.AuthorID); err != nil {
+func (p *Post)loadAuthor(ctx context.Context) error {
+	if author, err := (Author{}).GetOne(ctx, p.AuthorID); err != nil {
 		return err
 	} else {
 		p.Author = *author
@@ -235,21 +236,10 @@ func (p *Post)loadAuthor() error {
 	return nil
 }
 
-func stringSplit(str string) string {
-	b := []byte(str)
-	idx := 0
-	for i := 0; i < 200; i++ {
-		_, size := utf8.DecodeRune(b[:idx])
-		idx += size
-	}
-
-	return str[:idx]
-}
-
-func (p *Post)loadMeta() error {
+func (p *Post)loadMeta(ctx context.Context) error {
 
 	var postMetas []PostMeta
-	err := xormDb.Table("wprdh0703_postmeta").
+	err := GetDBConn(ctx).Table("wprdh0703_postmeta").
 			Where("post_id = ?", p.ID).
 			In("meta_key", "post_image", "_aioseop_description", "_aioseop_title").
 			Find(&postMetas)
@@ -290,10 +280,10 @@ func (p *Post)loadMeta() error {
 	return nil
 }
 
-func (p *Post)loadCategoriesAndTerms() error {
+func (p *Post)loadCategoriesAndTerms(ctx context.Context) error {
 	var terms []Term
 
-	terms, err := (&Term{}).FindByPort(p.ID)
+	terms, err := (&Term{}).FindByPost(ctx, p.ID)
 
 	if err != nil {
 		return err

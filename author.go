@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"crypto/md5"
+	"context"
 )
 
 type Author struct {
@@ -20,10 +21,10 @@ func (Author) TableName() (string) {
 	return "wprdh0703_users"
 }
 
-func (Author) GetOne(id int64) (*Author, error) {
+func (Author) GetOne(ctx context.Context, id int64) (*Author, error) {
 	var author Author
 
-	exists, err := xormDb.Where("ID = ?", id).Get(&author)
+	exists, err := GetDBConn(ctx).Where("ID = ?", id).Get(&author)
 
 	if err != nil {
 		return nil, err
@@ -43,7 +44,7 @@ func (a *Author)initAvatar() {
 	a.Avatar = fmt.Sprintf("https://www.gravatar.com/avatar/%x", hash)
 }
 
-func (Author) FindAuthorByPostCount(numPosts int) ([]Author, error) {
+func (Author) FindAuthorByPostCount(ctx context.Context, numPosts int) ([]Author, error) {
 	var authors []Author
 
 	sql := fmt.Sprintf(`
@@ -61,7 +62,7 @@ func (Author) FindAuthorByPostCount(numPosts int) ([]Author, error) {
 		order by b.ID;
   `, numPosts - 1)
 
-  if err := xormDb.SQL(sql).Find(&authors); err != nil {
+  if err := GetDBConn(ctx).SQL(sql).Find(&authors); err != nil {
   	return nil, err
 	}
 
