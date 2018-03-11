@@ -28,9 +28,9 @@ func init() {
 		panic(fmt.Errorf("Database open error: %s \n", err))
 	}
 	db.ShowSQL(false)
-	db.SetMaxOpenConns(20)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(60 * time.Hour)
+	//db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(0)
+	db.SetConnMaxLifetime(10 * time.Second)
 
 	xormDb = db
 
