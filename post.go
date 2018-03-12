@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 	"strings"
 	"context"
+	"strconv"
 )
 
 const (
@@ -49,13 +50,17 @@ func (PostMeta) TableName() (string) {
 	return "wprdh0703_postmeta"
 }
 
-func (Post)GetRecent(ctx context.Context) ([]Post, error) {
+func (Post)GetRecent(ctx context.Context, page int) ([]Post, error) {
 	var posts []Post
+
+	pageSize := 5
+	offset := (page - 1) * pageSize
+
 	err := GetDBConn(ctx).
 		Where("post_status = 'publish'").
 		And("post_type = 'post'").
 		OrderBy("post_date desc").
-		Limit(5).
+		Limit(5, offset).
 		Find(&posts)
 
 	if err != nil {
@@ -69,20 +74,28 @@ func loadPostAssoications(ctx context.Context, posts []Post) ([]Post, error) {
 	loadedPosts := make([]Post, 0)
 
 	for _, eachPost := range posts {
-		if err := eachPost.loadAuthor(ctx); err != nil {
+		if err := (&eachPost).loadAssoications(ctx); err != nil {
 			return nil, err
-		}
-
-		if err := eachPost.loadMeta(ctx); err != nil {
-			return nil, err
-		}
-		if err := eachPost.loadCategoriesAndTerms(ctx); err != nil {
-			return nil, err;
 		}
 
 		loadedPosts = append(loadedPosts, eachPost)
 	}
 	return loadedPosts, nil
+}
+
+func (p *Post) loadAssoications(ctx context.Context) error {
+	if err := p.loadAuthor(ctx); err != nil {
+		return err
+	}
+
+	if err := p.loadMeta(ctx); err != nil {
+		return err
+	}
+	if err := p.loadCategoriesAndTerms(ctx); err != nil {
+		return err;
+	}
+
+	return nil
 }
 
 func (p Post)GetRandomPostsByTerm(ctx context.Context) ([]TermPosts, error) {
@@ -121,39 +134,56 @@ func (p Post)GetRandomPostsByTerm(ctx context.Context) ([]TermPosts, error) {
 			}
 		}
 		selectedIndexes[i] = termIndex
-		termPosts, err := p.GetTermPosts(ctx, terms[termIndex].Term)
+		posts, err := p.getTermPosts(ctx, terms[termIndex].Term.ID, "", "RAND()", true,1, 5)
 		if err != nil {
 			return nil, err
 		}
-		termPostsArray = append(termPostsArray, *termPosts)
+
+		termPosts := 	TermPosts{
+			Term: terms[termIndex].Term,
+			Posts: posts,
+		}
+		termPostsArray = append(termPostsArray, termPosts)
 	}
 
 	return termPostsArray, nil
 }
 
-func (Post)GetTermPosts(ctx context.Context, term Term) (*TermPosts, error) {
+func (Post)getTermPosts(ctx context.Context, termId int,
+	where string, orderBy string, loadAssociation bool, page int, pageSize int) ([]Post, error) {
 	var posts []Post
 
-	err := GetDBConn(ctx).Table("wprdh0703_posts").
+	offset := (page - 1) * pageSize
+
+	query := GetDBConn(ctx).Table("wprdh0703_posts").
 		Select("wprdh0703_posts.*").
 		Join("INNER", "wprdh0703_term_relationships", "wprdh0703_posts.ID = wprdh0703_term_relationships.object_id").
 		Join("INNER", "wprdh0703_term_taxonomy", "wprdh0703_term_taxonomy.term_taxonomy_id = wprdh0703_term_relationships.term_taxonomy_id").
 		Where("wprdh0703_posts.post_status = 'publish'").
 		And("wprdh0703_posts.post_type = 'post'").
-		And("wprdh0703_term_taxonomy.term_id = ?", term.ID).
-		OrderBy("RAND()").
-		Limit(5).
-		Find(&posts)
+		And("wprdh0703_term_taxonomy.term_id = ?", termId)
 
+	if len(where) > 0 {
+		query = query.Where(where)
+	}
+
+	query = query.OrderBy(orderBy).Limit(pageSize, offset)
+	// Run query
+	err := query.Find(&posts)
 	if err != nil {
 		return nil, err
 	}
 
-	loadedPosts, err := loadPostAssoications(ctx, posts)
-	return &TermPosts{
-		Term: term,
-		Posts: loadedPosts,
-	}, nil
+	if loadAssociation {
+		loadedPosts, err := loadPostAssoications(ctx, posts)
+		if err != nil {
+			return nil, err
+		}
+
+		return loadedPosts, nil
+	} else {
+		return posts, nil
+	}
 }
 
 func (p Post)GetRandomPostsByAuthor(ctx context.Context) ([]AuthorPosts, error) {
@@ -224,6 +254,42 @@ func (Post)GetAuthorPosts(ctx context.Context, author Author) (*AuthorPosts, err
 		Author: author,
 		Posts: loadedPosts,
 	}, nil
+}
+
+func (p Post)GetByTag(ctx context.Context, tagId int, excludeIds []int, page int) ([]Post, error) {
+	idList := ""
+	prefix := ""
+	for _, eachId := range excludeIds {
+		idList += prefix + strconv.Itoa(eachId)
+		prefix = ","
+	}
+	where := ""
+	if len(excludeIds) > 0 {
+		where = "wprdh0703_posts.ID not in (" + idList + ")"
+	}
+
+	posts, err := p.getTermPosts(ctx, tagId, where, "wprdh0703_posts.post_date desc", true, page, 3)
+	if err != nil {
+		return nil, err
+	}
+
+	//excludeIdMap := make(map[int64]bool)
+	//for _, excludeId := range excludeIds {
+	//	excludeIdMap[int64(excludeId)] = true
+	//}
+	//
+	//posts := make([]Post, 0)
+	//for _, eachPost := range allPosts {
+	//	_, has := excludeIdMap[eachPost.ID]
+	//	if !has {
+	//		if err := (&eachPost).loadAssoications(ctx); err != nil {
+	//			return nil, err
+	//		}
+	//		posts = append(posts, eachPost)
+	//	}
+	//}
+
+	return posts, nil
 }
 
 func (p *Post)loadAuthor(ctx context.Context) error {

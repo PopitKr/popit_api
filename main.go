@@ -11,6 +11,8 @@ import (
 	"os"
 	"time"
 	"context"
+	"strconv"
+	"strings"
 )
 
 var (
@@ -59,8 +61,9 @@ func main() {
 	//e.Static("/", "public")
 
 	e.GET("/api/RecentPosts", GetRecentPosts)
-	e.GET("/api/ChannelPosts", GetChannelPosts)
+	e.GET("/api/TagPosts", GetTagPosts)
 	e.GET("/api/RandomAuthorPosts", GetRandomAuthorPosts)
+	e.GET("/api/PostsByTag", GetPostsByTag)
 
 	log.Fatal(e.Start(":8000"))
 }
@@ -90,7 +93,11 @@ func GetDBConn(ctx context.Context) *xorm.Session {
 }
 
 func GetRecentPosts(c echo.Context) error {
-	posts, err := Post{}.GetRecent(c.Request().Context())
+	page, err := strconv.Atoi(c.QueryParam("page"))
+	if err != nil {
+		page = 1
+	}
+	posts, err := Post{}.GetRecent(c.Request().Context(), page)
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
@@ -106,7 +113,7 @@ func GetRecentPosts(c echo.Context) error {
 	})
 }
 
-func GetChannelPosts(c echo.Context) error {
+func GetTagPosts(c echo.Context) error {
 	posts, err := Post{}.GetRandomPostsByTerm(c.Request().Context())
 
 	if err != nil {
@@ -126,6 +133,49 @@ func GetChannelPosts(c echo.Context) error {
 func GetRandomAuthorPosts(c echo.Context) error {
 	posts, err := Post{}.GetRandomPostsByAuthor(c.Request().Context())
 
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, ApiResult{
+		Success: true,
+		Data: posts,
+		Message: "",
+	})
+}
+
+func GetPostsByTag(c echo.Context) error {
+	tag, err := strconv.Atoi(c.QueryParam("tag"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "Wrong tag parameter[" + c.QueryParam("tag") + "]",
+		})
+	}
+
+	excludesParam := c.QueryParam("excludes")
+
+	excludes := make([]int, 0)
+	for _, eachIdStr := range strings.Split(excludesParam, ",") {
+		id, err := strconv.Atoi(eachIdStr)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, ApiResult{
+				Success: false,
+				Message: "Wrong exclude post id: " + excludesParam,
+			})
+		}
+		excludes = append(excludes, id)
+	}
+
+	page, err := strconv.Atoi(c.QueryParam("page"))
+	if err != nil {
+		page = 1
+	}
+
+	posts, err := Post{}.GetByTag(c.Request().Context(), tag, excludes, page)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
 			Success: false,
