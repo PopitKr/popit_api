@@ -50,17 +50,16 @@ func (PostMeta) TableName() (string) {
 	return "wprdh0703_postmeta"
 }
 
-func (Post)GetRecent(ctx context.Context, page int) ([]Post, error) {
+func (Post)GetRecent(ctx context.Context, page int, pageSize int) ([]Post, error) {
 	var posts []Post
 
-	pageSize := 5
 	offset := (page - 1) * pageSize
 
 	err := GetDBConn(ctx).
 		Where("post_status = 'publish'").
 		And("post_type = 'post'").
 		OrderBy("post_date desc").
-		Limit(5, offset).
+		Limit(pageSize, offset).
 		Find(&posts)
 
 	if err != nil {
@@ -186,6 +185,27 @@ func (Post)getTermPosts(ctx context.Context, termId int,
 	}
 }
 
+func (p Post)GetByAuthor(ctx context.Context, authorId int64, excludes []int, page int, pageSize int) ([]Post, error) {
+	idList := ""
+	prefix := ""
+	for _, eachId := range excludes {
+		idList += prefix + strconv.Itoa(eachId)
+		prefix = ","
+	}
+
+	where := ""
+	if len(excludes) > 0 {
+		where = "wprdh0703_users.ID not in (" + idList + ")"
+	}
+
+	posts, err := p.getAuthorPosts(ctx, authorId, where, "wprdh0703_posts.post_date desc", page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	return posts, nil
+}
+
 func (p Post)GetRandomPostsByAuthor(ctx context.Context) ([]AuthorPosts, error) {
 	authors, err := Author{}.FindAuthorByPostCount(ctx, 2)
 	if err != nil {
@@ -222,41 +242,52 @@ func (p Post)GetRandomPostsByAuthor(ctx context.Context) ([]AuthorPosts, error) 
 			}
 		}
 		selectedIndexes[i] = authorIndex
-		termPosts, err := p.GetAuthorPosts(ctx, authors[authorIndex])
+		posts, err := p.getAuthorPosts(ctx, authors[authorIndex].ID, "", "RAND()", 1, 2)
 		if err != nil {
 			return nil, err
 		}
-		authorPostsArray = append(authorPostsArray, *termPosts)
+		authorPosts := AuthorPosts{
+			Author: authors[authorIndex],
+			Posts: posts,
+		}
+
+		authorPostsArray = append(authorPostsArray, authorPosts)
 	}
 
 	return authorPostsArray, nil
 }
 
-func (Post)GetAuthorPosts(ctx context.Context, author Author) (*AuthorPosts, error) {
+func (Post)getAuthorPosts(ctx context.Context, authorId int64, where string, orderBy string, page int, pageSize int) ([]Post, error) {
 	var posts []Post
 
-	err := GetDBConn(ctx).Table("wprdh0703_posts").
+	offset := (page - 1) * pageSize
+
+	query := GetDBConn(ctx).Table("wprdh0703_posts").
 		Select("wprdh0703_posts.*").
 		Join("INNER", "wprdh0703_users", "wprdh0703_posts.post_author = wprdh0703_users.ID").
 		Where("wprdh0703_posts.post_status = 'publish'").
 		And("wprdh0703_posts.post_type = 'post'").
-		And("wprdh0703_posts.post_author = ?", author.ID).
-		OrderBy("RAND()").
-		Limit(5).
-		Find(&posts)
+		And("wprdh0703_posts.post_author = ?", authorId)
+
+	if len(where) > 0 {
+		query = query.Where(where)
+	}
+
+	err := query.OrderBy(orderBy).Limit(pageSize, offset).Find(&posts)
 
 	if err != nil {
 		return nil, err
 	}
 
 	loadedPosts, err := loadPostAssoications(ctx, posts)
-	return &AuthorPosts{
-		Author: author,
-		Posts: loadedPosts,
-	}, nil
+	if err != nil {
+		return nil, err
+	}
+
+	return loadedPosts, nil
 }
 
-func (p Post)GetByTag(ctx context.Context, tagId int, excludeIds []int, page int) ([]Post, error) {
+func (p Post)GetByTag(ctx context.Context, tagId int, excludeIds []int, page int, pageSize int) ([]Post, error) {
 	idList := ""
 	prefix := ""
 	for _, eachId := range excludeIds {
@@ -268,26 +299,10 @@ func (p Post)GetByTag(ctx context.Context, tagId int, excludeIds []int, page int
 		where = "wprdh0703_posts.ID not in (" + idList + ")"
 	}
 
-	posts, err := p.getTermPosts(ctx, tagId, where, "wprdh0703_posts.post_date desc", true, page, 3)
+	posts, err := p.getTermPosts(ctx, tagId, where, "wprdh0703_posts.post_date desc", true, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
-
-	//excludeIdMap := make(map[int64]bool)
-	//for _, excludeId := range excludeIds {
-	//	excludeIdMap[int64(excludeId)] = true
-	//}
-	//
-	//posts := make([]Post, 0)
-	//for _, eachPost := range allPosts {
-	//	_, has := excludeIdMap[eachPost.ID]
-	//	if !has {
-	//		if err := (&eachPost).loadAssoications(ctx); err != nil {
-	//			return nil, err
-	//		}
-	//		posts = append(posts, eachPost)
-	//	}
-	//}
 
 	return posts, nil
 }
@@ -331,7 +346,7 @@ func (p *Post)loadMeta(ctx context.Context) error {
 		if len(socialDescText) == 0 {
 			socialDescText, _ = html2text.FromString(p.Content, html2text.Options{PrettyTables: false})
 		}
-		endIndex := 80
+		endIndex := 150
 		if utf8.RuneCountInString(socialDescText) < endIndex {
 			endIndex = utf8.RuneCountInString(socialDescText)
 		}
