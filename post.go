@@ -112,34 +112,26 @@ func (p Post)GetRandomPostsByTerm(ctx context.Context) ([]TermPosts, error) {
 
 	termPostsArray := make([]TermPosts, 0)
 
-	selectedIndexes := []int{-1, -1, -1, -1, -1}
+	selectedIndexes := make(map[int]bool)
 	for i := 0; i < numResults; i++ {
-		termIndex := -1
+		// find not selected random value
 		for {
-			// find not selected random value
-			termIndex = rand.Intn(numTerms)
-			if i == 0 {
-				break;
-			}
-			found := false
-			for j := 0; j < i; j++ {
-				if termIndex != selectedIndexes[j] {
-					found = true
-					break;
-				}
-			}
-			if found {
-				break;
+			termIndex := rand.Intn(numTerms)
+			if _, has := selectedIndexes[termIndex]; !has {
+				selectedIndexes[termIndex] = true
+				break
 			}
 		}
-		selectedIndexes[i] = termIndex
-		posts, err := p.getTermPosts(ctx, terms[termIndex].Term.ID, "", "RAND()", true,1, 5)
+	}
+
+	for index, _ := range selectedIndexes {
+		posts, err := p.getTermPosts(ctx, terms[index].Term.ID, "", "RAND()", true,1, 5)
 		if err != nil {
 			return nil, err
 		}
 
 		termPosts := 	TermPosts{
-			Term: terms[termIndex].Term,
+			Term: terms[index].Term,
 			Posts: posts,
 		}
 		termPostsArray = append(termPostsArray, termPosts)
@@ -221,33 +213,25 @@ func (p Post)GetRandomPostsByAuthor(ctx context.Context) ([]AuthorPosts, error) 
 
 	authorPostsArray := make([]AuthorPosts, 0)
 
-	selectedIndexes := []int{-1, -1, -1, -1, -1}
+	selectedIndexes := make(map[int]bool)
 	for i := 0; i < numResults; i++ {
-		authorIndex := -1
+		// find not selected random value
 		for {
-			// find not selected random value
-			authorIndex = rand.Intn(numAuthors)
-			if i == 0 {
-				break;
-			}
-			found := false
-			for j := 0; j < i; j++ {
-				if authorIndex != selectedIndexes[j] {
-					found = true
-					break;
-				}
-			}
-			if found {
-				break;
+			authorIndex := rand.Intn(numAuthors)
+			if _, has := selectedIndexes[authorIndex]; !has {
+				selectedIndexes[authorIndex] = true
+				break
 			}
 		}
-		selectedIndexes[i] = authorIndex
-		posts, err := p.getAuthorPosts(ctx, authors[authorIndex].ID, "", "RAND()", 1, 2)
+	}
+
+	for index, _ := range selectedIndexes {
+		posts, err := p.getAuthorPosts(ctx, authors[index].ID, "", "RAND()", 1, 2)
 		if err != nil {
 			return nil, err
 		}
 		authorPosts := AuthorPosts{
-			Author: authors[authorIndex],
+			Author: authors[index],
 			Posts: posts,
 		}
 

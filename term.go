@@ -52,9 +52,9 @@ func (Term)CountTerm(ctx context.Context) ([]TermCount, error) {
 				JOIN wprdh0703_terms e ON d.term_id = e.term_id
 			WHERE d.taxonomy = 'post_tag'
 			GROUP BY e.term_id, e.name, e.slug
-		) a WHERE CNT > 5
+		) a WHERE CNT >= 2
     ORDER BY cnt DESC
-		LIMIT 20
+		LIMIT 500
   `
 	results, err := GetDBConn(ctx).QueryString(query)
 
