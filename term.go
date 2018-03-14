@@ -50,6 +50,7 @@ func (Term)CountTerm(ctx context.Context) ([]TermCount, error) {
 			FROM wprdh0703_term_relationships c
 				JOIN wprdh0703_term_taxonomy d ON c.term_taxonomy_id = d.term_taxonomy_id
 				JOIN wprdh0703_terms e ON d.term_id = e.term_id
+				JOIN wprdh0703_posts f on f.ID = c.object_id and f.post_status = 'publish' and f.post_type = 'post'
 			WHERE d.taxonomy = 'post_tag'
 			GROUP BY e.term_id, e.name, e.slug
 		) a WHERE CNT >= 2
