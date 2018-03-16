@@ -48,23 +48,18 @@ func main() {
 	defer xormDb.Close()
 
 	e := echo.New()
-	//renderer := &TemplateRenderer{
-	//	templates: template.Must(template.ParseGlob("./views/*.html")),
-	//}
-	//e.Renderer = renderer
-
 
 	e.Pre(middleware.RemoveTrailingSlash())
-	//e.Use(middleware.Recover())
+	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 	e.Use(setDbConnContext(xormDb))
-	//e.Static("/", "public")
 
 	e.GET("/api/RecentPosts", GetRecentPosts)
 	e.GET("/api/TagPosts", GetTagPosts)
 	e.GET("/api/RandomAuthorPosts", GetRandomAuthorPosts)
 	e.GET("/api/PostsByTag", GetPostsByTag)
 	e.GET("/api/PostsByAuthor", GetPostsByAuthor)
+	e.GET("/api/GetGoogleAd", GetGoogleAd)
 
 	log.Fatal(e.Start(":8000"))
 }
@@ -201,6 +196,43 @@ func GetPostsByAuthor(c echo.Context) error {
 	})
 }
 
+func GetGoogleAd(c echo.Context) error {
+	ads := make(map[string]SitePreference)
+
+	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), "google_ad.index.top"); err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	} else if ad != nil {
+		ads["google_ad.index.top"] = *ad
+	}
+
+	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), "google_ad.index.middle"); err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	} else if ad != nil {
+		ads["google_ad.index.middle"] = *ad
+	}
+
+	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), "google_ad.index.bottom"); err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	} else if ad != nil {
+		ads["google_ad.index.bottom"] = *ad
+	}
+
+	return c.JSON(http.StatusOK, ApiResult{
+		Success: true,
+		Data: ads,
+		Message: "",
+	})
+}
+
 func GetPostsByTag(c echo.Context) error {
 	tag, err := strconv.Atoi(c.QueryParam("tag"))
 	if err != nil {
@@ -248,36 +280,3 @@ func GetPostsByTag(c echo.Context) error {
 		Message: "",
 	})
 }
-
-//func GetAvatar(c echo.Context) error {
-//	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-//	if err != nil {
-//		return c.JSON(http.StatusInternalServerError, ApiResult{
-//			Success: false,
-//			Message: err.Error(),
-//		})
-//	}
-//
-//	author, err := Author{}.GetOne(id)
-//	if err != nil {
-//		return c.JSON(http.StatusInternalServerError, ApiResult{
-//			Success: false,
-//			Message: err.Error(),
-//		})
-//	}
-//
-//
-//	avatar, err :=  author.GetAvatar()
-//	if err != nil {
-//		return c.JSON(http.StatusInternalServerError, ApiResult{
-//			Success: false,
-//			Message: err.Error(),
-//		})
-//	}
-//
-//	return c.JSON(http.StatusOK, ApiResult{
-//		Success: true,
-//		Data: avatar,
-//		Message: "",
-//	})
-//}
