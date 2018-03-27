@@ -115,7 +115,8 @@ func GetRecentPosts(c echo.Context) error {
 }
 
 func GetTagPosts(c echo.Context) error {
-	posts, err := Post{}.GetRandomPostsByTerm(c.Request().Context())
+	isMobile := c.QueryParam("isMobile") == "true"
+	posts, err := Post{}.GetRandomPostsByTerm(c.Request().Context(), isMobile)
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
@@ -132,7 +133,9 @@ func GetTagPosts(c echo.Context) error {
 }
 
 func GetRandomAuthorPosts(c echo.Context) error {
-	posts, err := Post{}.GetRandomPostsByAuthor(c.Request().Context())
+	isMobile := c.QueryParam("isMobile") == "true"
+
+	posts, err := Post{}.GetRandomPostsByAuthor(c.Request().Context(), isMobile)
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
@@ -197,33 +200,37 @@ func GetPostsByAuthor(c echo.Context) error {
 }
 
 func GetGoogleAd(c echo.Context) error {
+	mode := c.QueryParam("mode")
 	ads := make(map[string]SitePreference)
 
-	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), "google_ad.index.top"); err != nil {
+	adKey := "ad." + mode + ".top";
+	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), adKey); err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
 			Success: false,
 			Message: err.Error(),
 		})
 	} else if ad != nil {
-		ads["google_ad.index.top"] = *ad
+		ads[adKey] = *ad
 	}
 
-	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), "google_ad.index.middle"); err != nil {
+	adKey = "ad." + mode + ".middle";
+	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), adKey); err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
 			Success: false,
 			Message: err.Error(),
 		})
 	} else if ad != nil {
-		ads["google_ad.index.middle"] = *ad
+		ads[adKey] = *ad
 	}
 
-	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), "google_ad.index.bottom"); err != nil {
+	adKey = "ad." + mode + ".bottom";
+	if ad, err := (SitePreference{}).GetByName(c.Request().Context(), adKey); err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
 			Success: false,
 			Message: err.Error(),
 		})
 	} else if ad != nil {
-		ads["google_ad.index.bottom"] = *ad
+		ads[adKey] = *ad
 	}
 
 	return c.JSON(http.StatusOK, ApiResult{

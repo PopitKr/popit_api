@@ -97,7 +97,7 @@ func (p *Post) loadAssoications(ctx context.Context) error {
 	return nil
 }
 
-func (p Post)GetRandomPostsByTerm(ctx context.Context) ([]TermPosts, error) {
+func (p Post)GetRandomPostsByTerm(ctx context.Context, isMobile bool) ([]TermPosts, error) {
 	terms, err := Term{}.CountTerm(ctx)
 	if err != nil {
 		return nil, err
@@ -106,6 +106,10 @@ func (p Post)GetRandomPostsByTerm(ctx context.Context) ([]TermPosts, error) {
 	numTerms := len(terms)
 
 	numResults := MAX_AUTHORS
+	if isMobile {
+		numResults = 3
+	}
+
 	if numTerms < MAX_AUTHORS {
 		numResults = numTerms;
 	}
@@ -124,8 +128,13 @@ func (p Post)GetRandomPostsByTerm(ctx context.Context) ([]TermPosts, error) {
 		}
 	}
 
+	pageSize := 5
+	if isMobile {
+		pageSize = 2
+	}
+
 	for index, _ := range selectedIndexes {
-		posts, err := p.getTermPosts(ctx, terms[index].Term.ID, "", "RAND()", true,1, 5)
+		posts, err := p.getTermPosts(ctx, terms[index].Term.ID, "", "RAND()", true,1, pageSize)
 		if err != nil {
 			return nil, err
 		}
@@ -198,7 +207,7 @@ func (p Post)GetByAuthor(ctx context.Context, authorId int64, excludes []int, pa
 	return posts, nil
 }
 
-func (p Post)GetRandomPostsByAuthor(ctx context.Context) ([]AuthorPosts, error) {
+func (p Post)GetRandomPostsByAuthor(ctx context.Context, isMobile bool) ([]AuthorPosts, error) {
 	authors, err := Author{}.FindAuthorByPostCount(ctx, 2)
 	if err != nil {
 		return nil, err
@@ -207,6 +216,9 @@ func (p Post)GetRandomPostsByAuthor(ctx context.Context) ([]AuthorPosts, error) 
 	numAuthors := len(authors)
 
 	numResults := MAX_AUTHORS
+	if isMobile {
+		numResults = 3
+	}
 	if numAuthors < MAX_AUTHORS {
 		numResults = numAuthors;
 	}
