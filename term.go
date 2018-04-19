@@ -4,6 +4,7 @@ import (
 	"github.com/go-xorm/xorm"
 	"strconv"
 	"context"
+	"errors"
 )
 
 type Term struct {
@@ -89,4 +90,23 @@ func (Term)CountTerm(ctx context.Context) ([]TermCount, error) {
 	}
 
 	return termCounts, nil
+}
+
+func (Term)FinyBySlug(ctx context.Context, slug string, taxonomy string) (*Term, error) {
+	var term Term
+
+	has, err := GetDBConn(ctx).Table("wprdh0703_terms").
+		Select("wprdh0703_terms.term_id, wprdh0703_terms.name, wprdh0703_terms.slug, wprdh0703_term_taxonomy.taxonomy").
+		Join("INNER", "wprdh0703_term_taxonomy", "wprdh0703_terms.term_id = wprdh0703_term_taxonomy.term_id and wprdh0703_term_taxonomy.taxonomy = ?", taxonomy).
+		Where("wprdh0703_terms.slug = ?", slug).Get(&term)
+
+	if !has {
+		return nil, errors.New("No term [" + slug + "]")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &term, nil
 }

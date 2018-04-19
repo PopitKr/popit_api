@@ -50,6 +50,32 @@ func (PostMeta) TableName() (string) {
 	return "wprdh0703_postmeta"
 }
 
+func (Post)GetByPermalink(ctx context.Context, permalink string) (*Post, error) {
+	post := &Post{}
+
+	has, err := GetDBConn(ctx).
+		Where("post_status = 'publish'").
+		And("post_type = 'post'").
+		And("post_name = ?", permalink).
+		OrderBy("post_date desc").
+		Get(post)
+
+	if !has {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = post.loadAssociations(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return post, nil
+}
+
 func (Post)GetRecent(ctx context.Context, page int, pageSize int) ([]Post, error) {
 	var posts []Post
 
@@ -73,7 +99,7 @@ func loadPostAssoications(ctx context.Context, posts []Post) ([]Post, error) {
 	loadedPosts := make([]Post, 0)
 
 	for _, eachPost := range posts {
-		if err := (&eachPost).loadAssoications(ctx); err != nil {
+		if err := (&eachPost).loadAssociations(ctx); err != nil {
 			return nil, err
 		}
 
@@ -82,7 +108,7 @@ func loadPostAssoications(ctx context.Context, posts []Post) ([]Post, error) {
 	return loadedPosts, nil
 }
 
-func (p *Post) loadAssoications(ctx context.Context) error {
+func (p *Post) loadAssociations(ctx context.Context) error {
 	if err := p.loadAuthor(ctx); err != nil {
 		return err
 	}

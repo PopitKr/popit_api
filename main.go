@@ -13,6 +13,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"net/url"
 )
 
 var (
@@ -29,7 +30,7 @@ func init() {
 	if err != nil {
 		panic(fmt.Errorf("Database open error: %s \n", err))
 	}
-	db.ShowSQL(false)
+	db.ShowSQL(true)
 	//db.SetMaxOpenConns(20)
 	db.SetMaxIdleConns(0)
 	db.SetConnMaxLifetime(10 * time.Second)
@@ -57,8 +58,12 @@ func main() {
 	e.GET("/api/RecentPosts", GetRecentPosts)
 	e.GET("/api/TagPosts", GetTagPosts)
 	e.GET("/api/RandomAuthorPosts", GetRandomAuthorPosts)
+	e.GET("/api/PostsByTagId", GetPostsByTagId)
 	e.GET("/api/PostsByTag", GetPostsByTag)
+	e.GET("/api/PostsByCategory", GetPostsByCategory)
 	e.GET("/api/PostsByAuthor", GetPostsByAuthor)
+	e.GET("/api/PostsByAuthorId", GetPostsByAuthorId)
+	e.GET("/api/PostByPermalink", GetPostByPermalink)
 	e.GET("/api/GetGoogleAd", GetGoogleAd)
 
 	log.Fatal(e.Start(":8000"))
@@ -151,7 +156,7 @@ func GetRandomAuthorPosts(c echo.Context) error {
 	})
 }
 
-func GetPostsByAuthor(c echo.Context) error {
+func GetPostsByAuthorId(c echo.Context) error {
 	id, err := strconv.Atoi(c.QueryParam("id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, ApiResult{
@@ -160,18 +165,62 @@ func GetPostsByAuthor(c echo.Context) error {
 		})
 	}
 
+	author, err := Author{}.GetOne(c.Request().Context(), int64(id))
+
+	if author == nil {
+		return c.JSON(http.StatusNotFound, ApiResult{
+			Success: false,
+			Message: "Author not found",
+		})
+	}
+
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "Wrong author parameter[" + c.QueryParam("author") + "]",
+		})
+	}
+
+	return getPostsByAuthor(c, author)
+}
+
+func GetPostsByAuthor(c echo.Context) error {
+	loginName := c.QueryParam("author")
+
+	author, err := Author{}.GetByLoginName(c.Request().Context(), loginName)
+
+	if author == nil {
+		return c.JSON(http.StatusNotFound, ApiResult{
+			Success: false,
+			Message: "Author " + loginName + " not found",
+		})
+	}
+
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "Wrong author parameter[" + c.QueryParam("author") + "]",
+		})
+	}
+
+	return getPostsByAuthor(c, author)
+}
+
+func getPostsByAuthor(c echo.Context, author *Author) error {
 	excludesParam := c.QueryParam("excludes")
 
 	excludes := make([]int, 0)
-	for _, eachIdStr := range strings.Split(excludesParam, ",") {
-		id, err := strconv.Atoi(eachIdStr)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, ApiResult{
-				Success: false,
-				Message: "Wrong exclude post id: " + excludesParam,
-			})
+	if len(strings.TrimSpace(excludesParam)) > 0 {
+		for _, eachIdStr := range strings.Split(excludesParam, ",") {
+			id, err := strconv.Atoi(eachIdStr)
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ApiResult{
+					Success: false,
+					Message: "Wrong exclude post id: " + excludesParam,
+				})
+			}
+			excludes = append(excludes, id)
 		}
-		excludes = append(excludes, id)
 	}
 
 	page, err := strconv.Atoi(c.QueryParam("page"))
@@ -184,7 +233,7 @@ func GetPostsByAuthor(c echo.Context) error {
 		size = 2
 	}
 
-	posts, err := Post{}.GetByAuthor(c.Request().Context(), int64(id), excludes, page, size)
+	posts, err := Post{}.GetByAuthor(c.Request().Context(), int64(author.ID), excludes, page, size)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
 			Success: false,
@@ -192,9 +241,17 @@ func GetPostsByAuthor(c echo.Context) error {
 		})
 	}
 
+	type AuthorPosts struct {
+		Author Author	`json:"author"`
+		Posts []Post	`json:"posts"`
+	}
+
 	return c.JSON(http.StatusOK, ApiResult{
 		Success: true,
-		Data: posts,
+		Data: AuthorPosts {
+			Author: *author,
+			Posts: posts,
+		},
 		Message: "",
 	})
 }
@@ -240,27 +297,125 @@ func GetGoogleAd(c echo.Context) error {
 	})
 }
 
-func GetPostsByTag(c echo.Context) error {
-	tag, err := strconv.Atoi(c.QueryParam("tag"))
+func GetPostByPermalink(c echo.Context) error {
+	permalink := c.QueryParam("permalink")
+	permalink = url.QueryEscape(permalink)
+	if len(permalink) == 0 {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "Wrong permalink parameter[" + c.QueryParam("permalink") + "]",
+		})
+	}
+	post, err := Post{}.GetByPermalink(c.Request().Context(), permalink)
+
+	if post == nil {
+		return c.JSON(http.StatusNotFound, ApiResult{
+			Success: false,
+			Message: permalink + " Not Found",
+		})
+	}
+
 	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, ApiResult{
+		Success: true,
+		Data: post,
+		Message: "",
+	})
+}
+
+func GetPostsByCategory(c echo.Context) error {
+	category := c.QueryParam("category")
+	if len(category) == 0 {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "Wrong tag parameter[" + c.QueryParam("category") + "]",
+		})
+	}
+
+	category = url.QueryEscape(category);
+
+	term, err := Term{}.FinyBySlug(c.Request().Context(), category, "category")
+
+	if term == nil {
+		return c.JSON(http.StatusNotFound, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	return getPostsByTagId(c, term.ID)
+}
+
+func GetPostsByTag(c echo.Context) error {
+	tag := c.QueryParam("tag")
+	if len(tag) == 0 {
 		return c.JSON(http.StatusBadRequest, ApiResult{
 			Success: false,
 			Message: "Wrong tag parameter[" + c.QueryParam("tag") + "]",
 		})
 	}
 
+	tag = url.QueryEscape(tag);
+
+	term, err := Term{}.FinyBySlug(c.Request().Context(), tag, "post_tag")
+
+	if term == nil {
+		return c.JSON(http.StatusNotFound, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	return getPostsByTagId(c, term.ID)
+}
+
+func GetPostsByTagId(c echo.Context) error {
+	id, err := strconv.Atoi(c.QueryParam("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "Wrong id parameter[" + c.QueryParam("id") + "]",
+		})
+	}
+
+	return getPostsByTagId(c, id)
+}
+
+func getPostsByTagId(c echo.Context, id int) error {
 	excludesParam := c.QueryParam("excludes")
 
 	excludes := make([]int, 0)
-	for _, eachIdStr := range strings.Split(excludesParam, ",") {
-		id, err := strconv.Atoi(eachIdStr)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, ApiResult{
-				Success: false,
-				Message: "Wrong exclude post id: " + excludesParam,
-			})
+	if len(excludesParam) > 0 {
+		for _, eachIdStr := range strings.Split(excludesParam, ",") {
+			id, err := strconv.Atoi(eachIdStr)
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, ApiResult{
+					Success: false,
+					Message: "Wrong exclude post id: " + excludesParam,
+				})
+			}
+			excludes = append(excludes, id)
 		}
-		excludes = append(excludes, id)
 	}
 
 	page, err := strconv.Atoi(c.QueryParam("page"))
@@ -273,7 +428,7 @@ func GetPostsByTag(c echo.Context) error {
 		size = 2
 	}
 
-	posts, err := Post{}.GetByTag(c.Request().Context(), tag, excludes, page, size)
+	posts, err := Post{}.GetByTag(c.Request().Context(), id, excludes, page, size)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, ApiResult{
 			Success: false,

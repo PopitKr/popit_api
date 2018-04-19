@@ -39,6 +39,24 @@ func (Author) GetOne(ctx context.Context, id int64) (*Author, error) {
 	return &author, nil
 }
 
+func (Author) GetByLoginName(ctx context.Context, loginName string) (*Author, error) {
+	var author Author
+
+	exists, err := GetDBConn(ctx).Where("user_login = ?", loginName).Get(&author)
+
+	if !exists {
+		return nil, errors.New("No Author: " + loginName)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	(&author).initAvatar();
+
+	return &author, nil
+}
+
 func (a *Author)initAvatar() {
 	hash := md5.Sum([]byte(a.Email))
 	a.Avatar = fmt.Sprintf("https://www.gravatar.com/avatar/%x", hash)
