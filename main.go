@@ -30,7 +30,7 @@ func init() {
 	if err != nil {
 		panic(fmt.Errorf("Database open error: %s \n", err))
 	}
-	db.ShowSQL(true)
+	db.ShowSQL(false)
 	//db.SetMaxOpenConns(20)
 	db.SetMaxIdleConns(0)
 	db.SetConnMaxLifetime(10 * time.Second)
@@ -47,6 +47,8 @@ type ApiResult struct {
 
 func main() {
 	defer xormDb.Close()
+
+	//StartGetFacebookLike()
 
 	e := echo.New()
 

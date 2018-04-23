@@ -8,6 +8,7 @@ import (
 	"strings"
 	"context"
 	"strconv"
+	"fmt"
 )
 
 const (
@@ -18,15 +19,16 @@ type Post struct {
 	ID int64 					   `json:"id"            xorm:"ID"`
 	AuthorID int64       `json:"-"             xorm:"post_author"`
 	Author Author  	     `json:"author"        xorm:"-"`
-	Content string       `json:"content"       xorm:"post_content"`
-	Title string		     `json:"title"         xorm:"post_title"`
-	PostDate time.Time   `json:"date"          xorm:"post_date"`
-	PostName string      `json:"postName"      xrom:"post_name"`
-	Image string         `json:"image"         xorm:"-"`
-	SocialTitle string   `json:"socialTitle"   xorm:"-"`
-	SocialDesc string    `json:"socialDesc"    xorm:"-"`
-	Categories []Term    `json:"categories"    xorm:"-"`
-	Tags []Term          `json:"tags"          xorm:"-"`
+	Content string           `json:"content"       xorm:"post_content"`
+	Title string             `json:"title"         xorm:"post_title"`
+	PostDate time.Time       `json:"date"          xorm:"post_date"`
+	PostName string          `json:"postName"      xrom:"post_name"`
+	Image string             `json:"image"         xorm:"-"`
+	SocialTitle string       `json:"socialTitle"   xorm:"-"`
+	SocialDesc string        `json:"socialDesc"    xorm:"-"`
+	Categories []Term        `json:"categories"    xorm:"-"`
+	Tags []Term              `json:"tags"          xorm:"-"`
+	Metas []PostExternalMeta `json:"metas"         xorm:"-"`
 }
 func (Post) TableName() (string) {
 	return "wprdh0703_posts"
@@ -54,6 +56,7 @@ func (Post)GetByPermalink(ctx context.Context, permalink string) (*Post, error) 
 	post := &Post{}
 
 	has, err := GetDBConn(ctx).
+		Select("ID, post_author, post_content, post_title, post_date, post_name").
 		Where("post_status = 'publish'").
 		And("post_type = 'post'").
 		And("post_name = ?", permalink).
@@ -82,6 +85,7 @@ func (Post)GetRecent(ctx context.Context, page int, pageSize int) ([]Post, error
 	offset := (page - 1) * pageSize
 
 	err := GetDBConn(ctx).
+		Select("ID, post_author, post_content, post_title, post_date, post_name").
 		Where("post_status = 'publish'").
 		And("post_type = 'post'").
 		OrderBy("post_date desc").
@@ -116,8 +120,15 @@ func (p *Post) loadAssociations(ctx context.Context) error {
 	if err := p.loadMeta(ctx); err != nil {
 		return err
 	}
+
 	if err := p.loadCategoriesAndTerms(ctx); err != nil {
 		return err;
+	}
+
+	if extraMetas, err := (PostExternalMeta{}).GetByPost(ctx, p.ID); err != nil {
+		return err
+	} else {
+		p.Metas = extraMetas
 	}
 
 	return nil
@@ -182,7 +193,8 @@ func (Post)getTermPosts(ctx context.Context, termId int,
 	offset := (page - 1) * pageSize
 
 	query := GetDBConn(ctx).Table("wprdh0703_posts").
-		Select("wprdh0703_posts.*").
+		//Select("wprdh0703_posts.*").
+		Select("wprdh0703_posts.ID, wprdh0703_posts.post_author, wprdh0703_posts.post_content, wprdh0703_posts.post_title, wprdh0703_posts.post_date, wprdh0703_posts.post_name").
 		Join("INNER", "wprdh0703_term_relationships", "wprdh0703_posts.ID = wprdh0703_term_relationships.object_id").
 		Join("INNER", "wprdh0703_term_taxonomy", "wprdh0703_term_taxonomy.term_taxonomy_id = wprdh0703_term_relationships.term_taxonomy_id").
 		Where("wprdh0703_posts.post_status = 'publish'").
@@ -285,7 +297,7 @@ func (Post)getAuthorPosts(ctx context.Context, authorId int64, where string, ord
 	offset := (page - 1) * pageSize
 
 	query := GetDBConn(ctx).Table("wprdh0703_posts").
-		Select("wprdh0703_posts.*").
+		Select("wprdh0703_posts.ID, wprdh0703_posts.post_author, wprdh0703_posts.post_content, wprdh0703_posts.post_title, wprdh0703_posts.post_date, wprdh0703_posts.post_name").
 		Join("INNER", "wprdh0703_users", "wprdh0703_posts.post_author = wprdh0703_users.ID").
 		Where("wprdh0703_posts.post_status = 'publish'").
 		And("wprdh0703_posts.post_type = 'post'").
@@ -340,7 +352,6 @@ func (p *Post)loadAuthor(ctx context.Context) error {
 }
 
 func (p *Post)loadMeta(ctx context.Context) error {
-
 	var postMetas []PostMeta
 	err := GetDBConn(ctx).Table("wprdh0703_postmeta").
 			Where("post_id = ?", p.ID).
@@ -408,4 +419,29 @@ func (p *Post)loadCategoriesAndTerms(ctx context.Context) error {
 	return nil
 }
 
+func (p *Post)UpdateFacebookLike(ctx context.Context, likes int) error {
+	var facebookLike FacebookLike
+	has, err := GetDBConn(ctx).Where("post_id = ?", p.ID).Get(&facebookLike)
+	if err != nil {
+		return err
+	}
+
+	if has {
+		fmt.Println("Update likes: id=", facebookLike.Id, ", likes=", likes)
+		facebookLike.Likes = likes
+		_, err := GetDBConn(ctx).Where("id = ?", facebookLike.Id).Update(facebookLike)
+		if err != nil {
+			return err
+		}
+	} else {
+		fmt.Println("Insert likes: post_id=", p.ID, ", likes=", likes)
+		facebookLike.PostId = p.ID
+		facebookLike.Likes = likes
+		_, err := GetDBConn(ctx).Insert(facebookLike)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 

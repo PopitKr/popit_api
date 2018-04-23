@@ -24,7 +24,9 @@ func (Author) TableName() (string) {
 func (Author) GetOne(ctx context.Context, id int64) (*Author, error) {
 	var author Author
 
-	exists, err := GetDBConn(ctx).Where("ID = ?", id).Get(&author)
+	exists, err := GetDBConn(ctx).
+		Select("ID, user_login, display_name, user_url").
+		Where("ID = ?", id).Get(&author)
 
 	if err != nil {
 		return nil, err
@@ -42,7 +44,9 @@ func (Author) GetOne(ctx context.Context, id int64) (*Author, error) {
 func (Author) GetByLoginName(ctx context.Context, loginName string) (*Author, error) {
 	var author Author
 
-	exists, err := GetDBConn(ctx).Where("user_login = ?", loginName).Get(&author)
+	exists, err := GetDBConn(ctx).
+		Select("ID, user_login, display_name, user_url").
+		Where("user_login = ?", loginName).Get(&author)
 
 	if !exists {
 		return nil, errors.New("No Author: " + loginName)
@@ -66,7 +70,7 @@ func (Author) FindAuthorByPostCount(ctx context.Context, numPosts int) ([]Author
 	var authors []Author
 
 	sql := fmt.Sprintf(`
-		select b.* from (
+		select b.ID, b.user_login, b.display_name, b.user_url from (
 			SELECT
 				post_author,
 				count(1) AS cnt
