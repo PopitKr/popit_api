@@ -20,4 +20,6 @@ from wprdh0703_posts
 where post_status = 'publish'
 and post_type = 'post';
 
-update post_external_metas set value = 'false' where post_id = 16506 and name = 'facebook.like.http';
+--insert into post_external_metas (post_id, name, value) values (16595, 'facebook.like.http', 'false');
+--update post_external_metas set value = 'false' where post_id = 16595 and name = 'facebook.like.http';
+

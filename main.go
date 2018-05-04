@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"net/url"
+	"io/ioutil"
+	"encoding/json"
 )
 
 var (
@@ -67,6 +69,7 @@ func main() {
 	e.GET("/api/PostsByAuthorId", GetPostsByAuthorId)
 	e.GET("/api/PostByPermalink", GetPostByPermalink)
 	e.GET("/api/GetGoogleAd", GetGoogleAd)
+	e.GET("/api/GetSlideShareEmbedLink", GetSlideShareEmbedLink)
 
 	log.Fatal(e.Start(":8000"))
 }
@@ -441,6 +444,52 @@ func getPostsByTagId(c echo.Context, id int) error {
 	return c.JSON(http.StatusOK, ApiResult{
 		Success: true,
 		Data: posts,
+		Message: "",
+	})
+}
+
+func GetSlideShareEmbedLink(c echo.Context) error {
+	link := c.QueryParam("link")
+
+	slideshareApi := fmt.Sprintf(`https://www.slideshare.net/api/oembed/2?url=%v&format=json`, link)
+	req, err := http.NewRequest("GET", slideshareApi, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		fmt.Println("ERROR sending request:", err.Error())
+		c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		fmt.Println("ERROR wrong status code:", resp.StatusCode, " ==>", slideshareApi)
+		c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: fmt.Sprintf("wrong http response status code: %s", resp.StatusCode),
+		})
+	}
+	jsonResult, _ := ioutil.ReadAll(resp.Body)
+
+	jsonMap := make(map[string]interface{})
+	err = json.Unmarshal(jsonResult, &jsonMap)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: fmt.Sprintf("wrong http response status code: %s", resp.StatusCode),
+		})
+	}
+	return c.JSON(http.StatusOK, ApiResult{
+		Success: true,
+		Data: jsonMap,
 		Message: "",
 	})
 }
