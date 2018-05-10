@@ -9,6 +9,11 @@ import (
 	"context"
 	"strconv"
 	"fmt"
+	"io/ioutil"
+	"encoding/json"
+	"net/url"
+	"net/http"
+	"errors"
 )
 
 const (
@@ -29,7 +34,17 @@ type Post struct {
 	Categories []Term        `json:"categories"    xorm:"-"`
 	Tags []Term              `json:"tags"          xorm:"-"`
 	Metas []PostExternalMeta `json:"metas"         xorm:"-"`
+	HighlightedText string   `json:"highlightedText" xorm:"-"`
 }
+
+type SearchResult struct {
+	TotalHits int `json:"totalHits"`
+	Posts     []struct {
+		ID              int         `json:"id"`
+		HighlightedText string      `json:"highlightedText"`
+	} `json:"posts"`
+}
+
 func (Post) TableName() (string) {
 	return "wprdh0703_posts"
 }
@@ -48,8 +63,95 @@ type PostMeta struct {
 	Key string `xorm:"meta_key"`
 	Value string `xorm:"meta_value"`
 }
+
 func (PostMeta) TableName() (string) {
 	return "wprdh0703_postmeta"
+}
+
+func (p Post)Search(ctx context.Context, keyword string, page int) ([]Post, error) {
+	encodedKeyword := &url.URL{Path: fmt.Sprintf(`%v`, keyword)}
+	searchAPI := fmt.Sprintf(`http://127.0.0.1:8099/api/search/%v?page=%v`, encodedKeyword.String(), page)
+
+	req, err := http.NewRequest("GET", searchAPI, nil)
+	if err != nil {
+		fmt.Println("ERROR:", err.Error(), " ==>", searchAPI)
+		return nil, err
+	}
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		fmt.Println("ERROR sending request:", err.Error())
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 || resp.StatusCode < 200 {
+		fmt.Println("ERROR wrong status code:", resp.StatusCode, " ==>", searchAPI)
+		//return 0, errors.New("wrong status code:" + resp.StatusCode")
+		return nil, errors.New("wrong http response status code")
+	}
+	jsonResult, _ := ioutil.ReadAll(resp.Body)
+
+	var searchResult SearchResult
+	err = json.Unmarshal(jsonResult, &searchResult)
+	if err != nil {
+		fmt.Println("ERROR parsing result:", err.Error())
+		fmt.Println("Result:", string(jsonResult))
+		return nil, err
+	}
+
+	if len(searchResult.Posts) == 0 {
+		emptyPosts := make([]Post, 0)
+		return emptyPosts, err
+	}
+
+	postIds := make([]int64, 0)
+
+	for _, post := range searchResult.Posts {
+		postIds = append(postIds, int64(post.ID))
+	}
+
+	posts, err := p.GetPostsByIds(ctx, postIds)
+	if err != nil {
+		return nil, err
+	}
+
+	// order by search result
+	postMap := make(map[int64]Post)
+	for _, post := range posts {
+		postMap[post.ID] = post
+	}
+
+	orderedPosts := make([]Post, 0)
+	for _, searchPost := range searchResult.Posts {
+		postId := int64(searchPost.ID)
+		post, has := postMap[postId]
+
+		post.HighlightedText = searchPost.HighlightedText
+
+		if has {
+			orderedPosts = append(orderedPosts, post)
+		}
+	}
+
+	return orderedPosts, nil
+}
+
+func (Post)GetPostsByIds(ctx context.Context, postIds []int64) ([]Post, error) {
+	var posts []Post
+
+	err := GetDBConn(ctx).
+		Select("ID, post_author, post_content, post_title, post_date, post_name").
+		Where("post_status = 'publish'").
+		And("post_type = 'post'").
+		In("ID", postIds).
+		Find(&posts)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return loadPostAssoications(ctx, posts)
 }
 
 func (Post)GetByPermalink(ctx context.Context, permalink string) (*Post, error) {
@@ -106,6 +208,8 @@ func loadPostAssoications(ctx context.Context, posts []Post) ([]Post, error) {
 		if err := (&eachPost).loadAssociations(ctx); err != nil {
 			return nil, err
 		}
+
+		eachPost.Content = "";	//truncate to reduce size
 
 		loadedPosts = append(loadedPosts, eachPost)
 	}

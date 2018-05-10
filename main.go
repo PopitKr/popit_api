@@ -59,6 +59,7 @@ func main() {
 	e.Use(middleware.CORS())
 	e.Use(setDbConnContext(xormDb))
 
+	e.GET("/api/Search", SearchPosts)
 	e.GET("/api/RecentPosts", GetRecentPosts)
 	e.GET("/api/TagPosts", GetTagPosts)
 	e.GET("/api/RandomAuthorPosts", GetRandomAuthorPosts)
@@ -96,6 +97,36 @@ func GetDBConn(ctx context.Context) *xorm.Session {
 		return db
 	}
 	panic("DB is not exist")
+}
+
+func SearchPosts(c echo.Context) error {
+	keyword := c.QueryParam("keyword")
+	if len(keyword) == 0 {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "No keyword",
+		})
+	}
+
+	page, err := strconv.Atoi(c.QueryParam("page"))
+	if err != nil {
+		page = 1
+	}
+
+	posts, err := Post{}.Search(c.Request().Context(), keyword, page)
+
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, ApiResult{
+		Success: true,
+		Data: posts,
+		Message: "",
+	})
 }
 
 func GetRecentPosts(c echo.Context) error {
