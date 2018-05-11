@@ -474,26 +474,27 @@ func (p *Post)loadMeta(ctx context.Context) error {
 		} else if eachMeta.Key == "_aioseop_title" {
 			p.SocialTitle = eachMeta.Value
 		}
+	}
 
-		if len(p.SocialTitle) == 0 {
-			p.SocialTitle = p.Title
-		}
+	if len(p.SocialTitle) == 0 {
+		p.SocialTitle = p.Title
+	}
 
-		socialDescText := p.SocialDesc
-		if len(socialDescText) == 0 {
-			socialDescText, _ = html2text.FromString(p.Content, html2text.Options{PrettyTables: false})
-		}
-		endIndex := 150
+	socialDescText := p.SocialDesc
+	if len(socialDescText) == 0 {
+		socialDescText, _ = html2text.FromString(p.Content, html2text.Options{PrettyTables: false})
+
+		endIndex := 600
 		if utf8.RuneCountInString(socialDescText) < endIndex {
 			endIndex = utf8.RuneCountInString(socialDescText)
 		}
 
 		p.SocialDesc = string([]rune(socialDescText)[:endIndex])
-
-		p.SocialDesc = strings.Replace(p.SocialDesc, "--------------------------", "", -1)
-		p.SocialDesc = strings.Replace(p.SocialDesc, "-----------------", "", -1)
-		p.SocialDesc = strings.Replace(p.SocialDesc, "*****************", "", -1)
 	}
+	p.SocialDesc = strings.Replace(p.SocialDesc, "\n", " ", -1)
+	p.SocialDesc = strings.Replace(p.SocialDesc, "--------------------------", "", -1)
+	p.SocialDesc = strings.Replace(p.SocialDesc, "-----------------", "", -1)
+	p.SocialDesc = strings.Replace(p.SocialDesc, "*****************", "", -1)
 
 	return nil
 }
