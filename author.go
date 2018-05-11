@@ -25,7 +25,7 @@ func (Author) GetOne(ctx context.Context, id int64) (*Author, error) {
 	var author Author
 
 	exists, err := GetDBConn(ctx).
-		Select("ID, user_login, display_name, user_url").
+		Select("ID, user_login, display_name, user_url, user_email").
 		Where("ID = ?", id).Get(&author)
 
 	if err != nil {
@@ -37,6 +37,8 @@ func (Author) GetOne(ctx context.Context, id int64) (*Author, error) {
 	}
 
 	(&author).initAvatar();
+
+	author.Email = "";
 
 	return &author, nil
 }
