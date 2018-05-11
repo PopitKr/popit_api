@@ -38,8 +38,6 @@ func (Author) GetOne(ctx context.Context, id int64) (*Author, error) {
 
 	(&author).initAvatar();
 
-	author.Email = "";
-
 	return &author, nil
 }
 
@@ -47,7 +45,7 @@ func (Author) GetByLoginName(ctx context.Context, loginName string) (*Author, er
 	var author Author
 
 	exists, err := GetDBConn(ctx).
-		Select("ID, user_login, display_name, user_url").
+		Select("ID, user_login, display_name, user_url, user_email").
 		Where("user_login = ?", loginName).Get(&author)
 
 	if !exists {
@@ -66,13 +64,14 @@ func (Author) GetByLoginName(ctx context.Context, loginName string) (*Author, er
 func (a *Author)initAvatar() {
 	hash := md5.Sum([]byte(a.Email))
 	a.Avatar = fmt.Sprintf("https://www.gravatar.com/avatar/%x", hash)
+	a.Email = "";
 }
 
 func (Author) FindAuthorByPostCount(ctx context.Context, numPosts int) ([]Author, error) {
 	var authors []Author
 
 	sql := fmt.Sprintf(`
-		select b.ID, b.user_login, b.display_name, b.user_url from (
+		select b.ID, b.user_login, b.display_name, b.user_url, user_email from (
 			SELECT
 				post_author,
 				count(1) AS cnt
