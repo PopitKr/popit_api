@@ -3,7 +3,6 @@ package main
 import (
 	"time"
 	"math/rand"
-	"github.com/jaytaylor/html2text"
 	"unicode/utf8"
 	"strings"
 	"context"
