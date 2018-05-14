@@ -9,6 +9,7 @@ import (
 	"context"
 	"strconv"
 	"fmt"
+	"golang.org/x/net/html"
 	"io/ioutil"
 	"encoding/json"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 
 const (
 	MAX_AUTHORS = 5
+	MAX_DESCRIPTION_CHARS = 600
 )
 
 type Post struct {
@@ -482,21 +484,69 @@ func (p *Post)loadMeta(ctx context.Context) error {
 
 	socialDescText := p.SocialDesc
 	if len(socialDescText) == 0 {
-		socialDescText, _ = html2text.FromString(p.Content, html2text.Options{PrettyTables: false})
-
+		socialDescText = p.getDescriptionFromContents()
 		endIndex := 600
 		if utf8.RuneCountInString(socialDescText) < endIndex {
 			endIndex = utf8.RuneCountInString(socialDescText)
 		}
 
 		p.SocialDesc = string([]rune(socialDescText)[:endIndex])
+
+		p.SocialDesc = strings.Replace(p.SocialDesc, "--------------------------", "", -1)
+		p.SocialDesc = strings.Replace(p.SocialDesc, "-----------------", "", -1)
+		p.SocialDesc = strings.Replace(p.SocialDesc, "*****************", "", -1)
 	}
-	p.SocialDesc = strings.Replace(p.SocialDesc, "\n", " ", -1)
-	p.SocialDesc = strings.Replace(p.SocialDesc, "--------------------------", "", -1)
-	p.SocialDesc = strings.Replace(p.SocialDesc, "-----------------", "", -1)
-	p.SocialDesc = strings.Replace(p.SocialDesc, "*****************", "", -1)
+
+	p.SocialDesc = html.EscapeString(p.SocialDesc)
 
 	return nil
+}
+
+func (p *Post)getDescriptionFromContents() string {
+	htmlToken := html.NewTokenizer(strings.NewReader(p.Content))
+	socialDescText := ""
+	isPreTag := false
+	stop := false
+	for !stop {
+		// token type
+		tokenType := htmlToken.Next()
+		if tokenType == html.ErrorToken {
+			break
+		}
+		token := htmlToken.Token()
+		switch tokenType {
+		case html.StartTagToken: // <tag>
+			// type Token struct {
+			//     Type     TokenType
+			//     DataAtom atom.Atom
+			//     Data     string
+			//     Attr     []Attribute
+			// }
+			//
+			// type Attribute struct {
+			//     Namespace, Key, Val string
+			// }
+			if token.Data == "pre" {
+				isPreTag = true
+			}
+			break
+		case html.TextToken: // text between start and end tag
+			if !isPreTag {
+				socialDescText += strings.TrimSpace(token.Data) + " "
+				if len(socialDescText) > MAX_DESCRIPTION_CHARS {
+					stop = true
+				}
+			}
+			break
+		case html.EndTagToken: // </tag>
+			if token.Data == "pre" {
+				isPreTag = false
+			}
+			break
+		}
+	}
+
+	return strings.TrimSpace(socialDescText)
 }
 
 func (p *Post)loadCategoriesAndTerms(ctx context.Context) error {
