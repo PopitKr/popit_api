@@ -495,7 +495,7 @@ func (p *Post)loadMeta(ctx context.Context) error {
 		p.SocialDesc = strings.Replace(p.SocialDesc, "-----------------", "", -1)
 		p.SocialDesc = strings.Replace(p.SocialDesc, "*****************", "", -1)
 	}
-
+	p.SocialDesc = strings.Replace(p.SocialDesc, "\n", " ", -1)
 	p.SocialDesc = html.EscapeString(p.SocialDesc)
 
 	return nil
