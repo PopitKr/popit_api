@@ -69,6 +69,7 @@ func main() {
 	e.GET("/api/PostsByAuthor", GetPostsByAuthor)
 	e.GET("/api/PostsByAuthorId", GetPostsByAuthorId)
 	e.GET("/api/PostByPermalink", GetPostByPermalink)
+	e.GET("/api/PostById", GetPostById)
 	e.GET("/api/GetGoogleAd", GetGoogleAd)
 	e.GET("/api/GetSlideShareEmbedLink", GetSlideShareEmbedLink)
 
@@ -329,6 +330,36 @@ func GetGoogleAd(c echo.Context) error {
 	return c.JSON(http.StatusOK, ApiResult{
 		Success: true,
 		Data: ads,
+		Message: "",
+	})
+}
+func GetPostById(c echo.Context) error {
+	id, err := strconv.Atoi(c.QueryParam("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "Wrong id parameter[" + c.QueryParam("id") + "]",
+		})
+	}
+	post, err := Post{}.GetPostById(c.Request().Context(), int64(id))
+
+	if post == nil {
+		return c.JSON(http.StatusNotFound, ApiResult{
+			Success: false,
+			Message: fmt.Sprintf("Post %v Not Found", id),
+		})
+	}
+
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, ApiResult{
+		Success: true,
+		Data: post,
 		Message: "",
 	})
 }

@@ -28,7 +28,9 @@ type Post struct {
 	Content string           `json:"content"       xorm:"post_content"`
 	Title string             `json:"title"         xorm:"post_title"`
 	PostDate time.Time       `json:"date"          xorm:"post_date"`
-	PostName string          `json:"postName"      xrom:"post_name"`
+	PostName string          `json:"postName"      xorm:"post_name"`
+	PostExcerpt string       `json:"-"             xorm:"post_excerpt"`
+	Guid string              `json:"-"             xorm:"guid"`
 	Image string             `json:"image"         xorm:"-"`
 	SocialTitle string       `json:"socialTitle"   xorm:"-"`
 	SocialDesc string        `json:"socialDesc"    xorm:"-"`
@@ -112,7 +114,7 @@ func (p Post)Search(ctx context.Context, keyword string, page int) ([]Post, erro
 		postIds = append(postIds, int64(post.ID))
 	}
 
-	posts, err := p.GetPostsByIds(ctx, postIds)
+	posts, err := p.GetPostsByIds(ctx, postIds, "post")
 	if err != nil {
 		return nil, err
 	}
@@ -138,13 +140,46 @@ func (p Post)Search(ctx context.Context, keyword string, page int) ([]Post, erro
 	return orderedPosts, nil
 }
 
-func (Post)GetPostsByIds(ctx context.Context, postIds []int64) ([]Post, error) {
+func (Post)GetPostById(ctx context.Context, postId int64) (*Post, error) {
+	post := &Post{}
+
+	has, err := GetDBConn(ctx).
+		Select("ID, post_author, post_content, post_title, post_date, post_name, guid, post_excerpt").
+		Where("post_status = 'draft'").
+		And("post_type = 'post'").
+		And("ID = ?", postId).
+		OrderBy("post_date desc").
+		Get(post)
+
+	if !has {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = post.loadAssociations(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	post.processSpecialElement(ctx)
+	return post, nil
+}
+
+func (Post)GetPostsByIds(ctx context.Context, postIds []int64, postType string) ([]Post, error) {
 	var posts []Post
 
+	postStatus := "publish"
+	if postType == "attachment" {
+		postStatus = "inherit"
+	}
+
 	err := GetDBConn(ctx).
-		Select("ID, post_author, post_content, post_title, post_date, post_name").
-		Where("post_status = 'publish'").
-		And("post_type = 'post'").
+		Select("ID, post_author, post_content, post_title, post_date, post_name, guid, post_excerpt").
+		Where("post_status = ?", postStatus).
+		And("post_type = ?", postType).
 		In("ID", postIds).
 		Find(&posts)
 
@@ -159,7 +194,7 @@ func (Post)GetByPermalink(ctx context.Context, permalink string) (*Post, error) 
 	post := &Post{}
 
 	has, err := GetDBConn(ctx).
-		Select("ID, post_author, post_content, post_title, post_date, post_name").
+		Select("ID, post_author, post_content, post_title, post_date, post_name, guid, post_excerpt").
 		Where("post_status = 'publish'").
 		And("post_type = 'post'").
 		And("post_name = ?", permalink).
@@ -179,7 +214,86 @@ func (Post)GetByPermalink(ctx context.Context, permalink string) (*Post, error) 
 		return nil, err
 	}
 
+	post.processSpecialElement(ctx)
 	return post, nil
+}
+
+func (p *Post) processSpecialElement(ctx context.Context) {
+	if !strings.Contains(p.Content, "[gallery") {
+		return
+	}
+
+	prefix := ""
+	processedContent := ""
+	lines := strings.Split(p.Content, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "[gallery") {
+			//[gallery columns="2" size="medium" ids="17068,17069"]
+
+			columns := ""
+			size := ""
+			ids := make([]int64, 0)
+			tokens := strings.Split(strings.Replace(strings.Replace(line, "[gallery ", "", -1), "]", "", -1), " ")
+			for _, eachToken := range tokens {
+				keyVal := strings.Split(eachToken, "=")
+				if len(keyVal) != 2 {
+					continue
+				}
+				key := keyVal[0]
+				val := keyVal[1]
+
+				if key == "ids" {
+					idStr, err := strconv.Unquote(strings.TrimSpace(val))
+					if err != nil {
+						fmt.Println("gallery id Unquote error:", val, "==>", err.Error())
+						return
+					}
+					for _, id := range strings.Split(idStr, ",") {
+						i64, err := strconv.ParseInt(id, 10, 32)
+						if err != nil {
+							fmt.Println("gallery id error:", err.Error())
+							return
+						}
+						ids = append(ids, i64)
+					}
+				} else if key == "columns" {
+					columns = val
+				} else if key == "size" {
+					size = val
+				}
+			}
+
+			childPosts, err := p.GetPostsByIds(ctx, ids, "attachment")
+			if err != nil {
+				fmt.Println("error while getting child post:", err.Error())
+				return
+			}
+
+			images := make([]string, 0)
+			postExcerpts := make([]string, 0)
+
+			for _, eachId := range ids {
+				for _, eachChildPost := range childPosts {
+					if eachId == eachChildPost.ID {
+						images = append(images, eachChildPost.Guid)
+						parameters := url.Values{}
+						parameters.Add("", eachChildPost.PostExcerpt)
+						encodedPostExcerpt := parameters.Encode()
+
+						postExcerpts = append(postExcerpts, encodedPostExcerpt[1:])
+						break
+					}
+				}
+			}
+			processedContent += prefix + fmt.Sprintf("[gallery columns=%v size=%v images=\"%v\" captions=\"%v\"]",
+				columns, size, strings.Join(images, ","), strings.Join(postExcerpts, ","))
+		}	else {
+			processedContent += prefix + line
+		}
+		prefix = "\n"
+	}
+
+	p.Content = processedContent
 }
 
 func (Post)GetRecent(ctx context.Context, page int, pageSize int) ([]Post, error) {
