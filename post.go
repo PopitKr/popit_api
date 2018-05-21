@@ -316,6 +316,14 @@ func (Post)GetRecent(ctx context.Context, page int, pageSize int) ([]Post, error
 	return loadPostAssoications(ctx, posts)
 }
 
+func (Post)GetNumberOfPosts(ctx context.Context) (int64, error) {
+	var post Post
+	return GetDBConn(ctx).
+		Where("post_status = 'publish'").
+		And("post_type = 'post'").
+		Count(&post)
+}
+
 func loadPostAssoications(ctx context.Context, posts []Post) ([]Post, error) {
 	loadedPosts := make([]Post, 0)
 

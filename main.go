@@ -33,9 +33,9 @@ func init() {
 		panic(fmt.Errorf("Database open error: %s \n", err))
 	}
 	db.ShowSQL(false)
-	//db.SetMaxOpenConns(20)
-	db.SetMaxIdleConns(0)
-	db.SetConnMaxLifetime(10 * time.Second)
+	db.SetMaxOpenConns(100)
+	db.SetMaxIdleConns(20)
+	db.SetConnMaxLifetime(60 * time.Second)
 
 	xormDb = db
 
@@ -49,8 +49,6 @@ type ApiResult struct {
 
 func main() {
 	defer xormDb.Close()
-
-	//StartGetFacebookLike()
 
 	e := echo.New()
 
@@ -84,6 +82,7 @@ func setDbConnContext(xormDb *xorm.Engine) echo.MiddlewareFunc {
 
 			req := ctx.Request()
 			ctx.SetRequest(req.WithContext(context.WithValue(req.Context(), "DB", session)))
+
 			return next(ctx)
 		}
 	}
@@ -140,6 +139,11 @@ func GetRecentPosts(c echo.Context) error {
 		size = 4
 	}
 
+	includeTotal := c.QueryParam("includeTotal")
+	if len(includeTotal) == 0 {
+		includeTotal = "false"
+	}
+
 	posts, err := Post{}.GetRecent(c.Request().Context(), page, size)
 
 	if err != nil {
@@ -149,11 +153,35 @@ func GetRecentPosts(c echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, ApiResult{
-		Success: true,
-		Data: posts,
-		Message: "",
-	})
+	if includeTotal != "true" {
+		return c.JSON(http.StatusOK, ApiResult{
+			Success: true,
+			Data: posts,
+			Message: "",
+		})
+	} else {
+		numberOfPosts, err :=  Post{}.GetNumberOfPosts(c.Request().Context())
+
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, ApiResult{
+				Success: false,
+				Message: err.Error(),
+			})
+		}
+
+		data := struct {
+			Total int64 `json:"total"`
+			Posts []Post  `json:"posts"`
+		}{
+			numberOfPosts,
+			posts,
+		}
+		return c.JSON(http.StatusOK, ApiResult{
+			Success: true,
+			Data: data,
+			Message: "",
+		})
+	}
 }
 
 func GetTagPosts(c echo.Context) error {
