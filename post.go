@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"net/http"
 	"errors"
+	"github.com/wulijun/go-php-serialize/phpserialize"
+	"path/filepath"
 )
 
 const (
@@ -32,6 +34,8 @@ type Post struct {
 	PostExcerpt string       `json:"-"             xorm:"post_excerpt"`
 	Guid string              `json:"-"             xorm:"guid"`
 	Image string             `json:"image"         xorm:"-"`
+	MediumImage string       `json:"mediumImage"   xorm:"-"`
+	ThumbnailImage string    `json:"thumbnailImage" xorm:"-"`
 	SocialTitle string       `json:"socialTitle"   xorm:"-"`
 	SocialDesc string        `json:"socialDesc"    xorm:"-"`
 	Categories []Term        `json:"categories"    xorm:"-"`
@@ -582,7 +586,7 @@ func (p *Post)loadMeta(ctx context.Context) error {
 	var postMetas []PostMeta
 	err := GetDBConn(ctx).Table("wprdh0703_postmeta").
 			Where("post_id = ?", p.ID).
-			In("meta_key", "post_image", "_aioseop_description", "_aioseop_title").
+			In("meta_key", "post_image", "_aioseop_description", "_aioseop_title", "_thumbnail_id").
 			Find(&postMetas)
 
 	if err != nil {
@@ -596,6 +600,8 @@ func (p *Post)loadMeta(ctx context.Context) error {
 			p.SocialDesc = eachMeta.Value
 		} else if eachMeta.Key == "_aioseop_title" {
 			p.SocialTitle = eachMeta.Value
+		} else if eachMeta.Key == "_thumbnail_id" {
+			p.setThumbnailImage(ctx, eachMeta.Value)
 		}
 	}
 
@@ -621,6 +627,53 @@ func (p *Post)loadMeta(ctx context.Context) error {
 	p.SocialDesc = html.EscapeString(p.SocialDesc)
 
 	return nil
+}
+
+func (p *Post)setThumbnailImage(ctx context.Context, thumbnailId string) {
+	if len(thumbnailId) == 0 {
+		return
+	}
+
+	var postMeta PostMeta
+	has, err := GetDBConn(ctx).Table("wprdh0703_postmeta").
+		Where("post_id = ?", thumbnailId).
+		And("meta_key = ?", "_wp_attachment_metadata").
+		Get(&postMeta)
+
+	if !has || err != nil {
+		return
+	}
+
+	var  decodeRes interface{}
+
+	if decodeRes, err = phpserialize.Decode(postMeta.Value); err != nil {
+		fmt.Errorf("decode data fail %v, %v", err, postMeta.Value)
+		return
+	}
+
+	imageMeta, ok := decodeRes.(map[interface {}]interface {})
+	if !ok {
+		return
+	}
+	imagePath, _ := filepath.Split(fmt.Sprintf("/wp-content/uploads/%v", imageMeta["file"].(string)))
+
+	sizes := imageMeta["sizes"]
+	sizesMap, ok := sizes.(map[interface {}]interface{})
+	if !ok {
+		return
+	}
+
+	thumbnailMap, ok := sizesMap["thumbnail"].(map[interface{}]interface{})
+	if !ok {
+		return
+	}
+	p.ThumbnailImage = "https://www.popit.kr/" + imagePath + thumbnailMap["file"].(string)
+
+	mediumMap, ok := sizesMap["medium"].(map[interface{}]interface{})
+	if !ok {
+		return
+	}
+	p.MediumImage = "https://www.popit.kr/" + imagePath + mediumMap["file"].(string)
 }
 
 func (p *Post)getDescriptionFromContents() string {
