@@ -70,6 +70,8 @@ func main() {
 	e.GET("/api/PostById", GetPostById)
 	e.GET("/api/GetGoogleAd", GetGoogleAd)
 	e.GET("/api/GetSlideShareEmbedLink", GetSlideShareEmbedLink)
+	e.GET("/api/GetSitePreference", GetSitePreference)
+
 
 	log.Fatal(e.Start(":8000"))
 }
@@ -97,6 +99,38 @@ func GetDBConn(ctx context.Context) *xorm.Session {
 		return db
 	}
 	panic("DB is not exist")
+}
+
+func GetSitePreference(c echo.Context) error {
+	name := c.QueryParam("name")
+	if len(name) == 0 {
+		return c.JSON(http.StatusBadRequest, ApiResult{
+			Success: false,
+			Message: "No name parameter",
+		})
+	}
+
+	sitePref, err := (SitePreference{}).GetByName(c.Request().Context(), name)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, ApiResult{
+			Success: false,
+			Message: err.Error(),
+		})
+	}
+
+	if sitePref == nil {
+		return c.JSON(http.StatusOK, ApiResult{
+			Success: true,
+			Data: "",
+			Message: "",
+		})
+	}
+
+	return c.JSON(http.StatusOK, ApiResult{
+		Success: true,
+		Data: sitePref,
+		Message: "",
+	})
 }
 
 func SearchPosts(c echo.Context) error {
