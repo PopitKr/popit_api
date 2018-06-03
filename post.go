@@ -149,7 +149,7 @@ func (Post)GetPostById(ctx context.Context, postId int64) (*Post, error) {
 
 	has, err := GetDBConn(ctx).
 		Select("ID, post_author, post_content, post_title, post_date, post_name, guid, post_excerpt").
-		Where("post_status = 'draft'").
+		Where("post_status in ('draft', 'future')").
 		And("post_type = 'post'").
 		And("ID = ?", postId).
 		OrderBy("post_date desc").
